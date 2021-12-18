@@ -1,3 +1,4 @@
+# Run this!
 name: Check code smells
 on: [push, pull_request]
 jobs:
