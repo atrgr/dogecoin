@@ -1,27 +1,23 @@
-# CodeQL GH Actions file
-name: CodeQL
+# SonarCloud GH Actions file
+name: SonarCloud
 
 on:
   push:
     branches:
-      - '*-dev'
-      - '*-maint'
+      - '*'
   pull_request:
     # The branches below must be a subset of the branches above
     branches:
-      - '*-dev'
-    paths-ignore:
-      - '**/*.md'
-      - '**/*.txt'
-      - 'contrib'
-      - 'doc'
-      - 'share'
-      - 'qa'
+      - '*'
 
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-18.04
+    env:
+      SONAR_SCANNER_VERSION: 4.4.0.2170
+      SONAR_SERVER_URL: "https://sonarcloud.io"
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
     permissions:
       actions: read
       contents: read
@@ -31,12 +27,12 @@ jobs:
       fail-fast: false
       matrix:
         language: [ 'cpp' ]
-        # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python' ]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
-
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
     - name: Update system
       run: |
         sudo apt-get update --yes
@@ -56,16 +52,34 @@ jobs:
         make -j4 HOST=x86_64-pc-linux-gnu
         popd
 
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v1
+    - name: Set up JDK 11
+      uses: actions/setup-java@v1
       with:
-        languages: ${{ matrix.language }}
-
+        java-version: 11
+    - name: Download and set up sonar-scanner
+      env:
+        SONAR_SCANNER_DOWNLOAD_URL: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${{ env.SONAR_SCANNER_VERSION }}-linux.zip
+      run: |
+        mkdir -p $HOME/.sonar
+        curl -sSLo $HOME/.sonar/sonar-scanner.zip ${{ env.SONAR_SCANNER_DOWNLOAD_URL }} 
+        unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
+        echo "$HOME/.sonar/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux/bin" >> $GITHUB_PATH
+    - name: Download and set up build-wrapper
+      env:
+        BUILD_WRAPPER_DOWNLOAD_URL: ${{ env.SONAR_SERVER_URL }}/static/cpp/build-wrapper-linux-x86.zip
+      run: |
+        curl -sSLo $HOME/.sonar/build-wrapper-linux-x86.zip ${{ env.BUILD_WRAPPER_DOWNLOAD_URL }}
+        unzip -o $HOME/.sonar/build-wrapper-linux-x86.zip -d $HOME/.sonar/
+        echo "$HOME/.sonar/build-wrapper-linux-x86" >> $GITHUB_PATH    
     - name: Build Dogecoin
       run: |
        ./autogen.sh
        ./configure --prefix=`pwd`/depends/x86_64-pc-linux-gnu
-       make -j4
+       build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} make -j4
 
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v1
+    - name: Run sonar-scanner
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: |
+        sonar-scanner --define sonar.host.url="${{ env.SONAR_SERVER_URL }}" --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}"
