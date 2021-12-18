@@ -1,0 +1,12 @@
+name: Check code smells
+on: [push, pull_request]
+jobs:
+  smell-check:
+    name: Smell check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: "actions/checkout@v2"
+      - uses: "manele-se/code-smell-tool@v1.1.4"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          source-location: src
